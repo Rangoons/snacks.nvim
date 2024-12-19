@@ -11,7 +11,6 @@ M.meta = {
 }
 
 local uv = vim.uv or vim.loop
-
 ---@class snacks.gitbrowse.Config
 ---@field url_patterns? table<string, table<string, string|fun(fields:snacks.gitbrowse.Fields):string>>
 local defaults = {
@@ -25,7 +24,7 @@ local defaults = {
     end
     vim.ui.open(url)
   end,
-  ---@type "repo" | "branch" | "file" | "commit"
+  ---@type "repo" | "branch" | "file" | "commit" | "pull"
   what = "file", -- what to open. not all remotes support all types
   branch = nil, ---@type string?
   line_start = nil, ---@type number?
@@ -51,16 +50,19 @@ local defaults = {
       branch = "/tree/{branch}",
       file = "/blob/{branch}/{file}#L{line_start}-L{line_end}",
       commit = "/commit/{commit}",
+      pull = "/pull/{pull}",
     },
     ["gitlab%.com"] = {
       branch = "/-/tree/{branch}",
       file = "/-/blob/{branch}/{file}#L{line_start}-L{line_end}",
       commit = "/-/commit/{commit}",
+      pull = "/-/merge_requests/{pull}",
     },
     ["bitbucket%.org"] = {
       branch = "/src/{branch}",
       file = "/src/{branch}/{file}#lines-{line_start}-L{line_end}",
       commit = "/commits/{commit}",
+      pull = "/pull-requests/{pull}",
     },
   },
 }
@@ -72,7 +74,7 @@ local defaults = {
 ---@field line_end? number
 ---@field commit? string
 ---@field line_count? number
-
+---@field pull? number
 ---@private
 ---@param remote string
 ---@param opts? snacks.gitbrowse.Config
@@ -126,6 +128,12 @@ local function is_valid_commit_hash(hash, cwd)
   system({ "git", "-C", cwd, "rev-parse", "--verify", hash }, "Invalid commit hash")
   return true
 end
+local function is_valid_pull_request_number(number, cwd)
+  if not (number:match("^%d+$")) then
+    return false
+  end
+  return true
+end
 
 ---@param opts? snacks.gitbrowse.Config
 function M.open(opts)
@@ -143,6 +151,7 @@ function M._open(opts)
   local cwd = file and vim.fn.fnamemodify(file, ":h") or vim.fn.getcwd()
   local word = vim.fn.expand("<cword>")
   local is_commit = is_valid_commit_hash(word, cwd)
+  local is_pr = is_valid_pull_request_number(word, cwd)
   ---@type snacks.gitbrowse.Fields
   local fields = {
     branch = opts.branch
@@ -151,6 +160,7 @@ function M._open(opts)
     line_start = opts.line_start,
     line_end = opts.line_end,
     commit = is_commit and word or nil,
+    pull = is_pr and tonumber(word) or nil,
   }
 
   -- Get visual selection range if in visual mode
@@ -174,7 +184,7 @@ function M._open(opts)
   opts.what = is_commit and "commit" or opts.what == "commit" and not fields.commit and "file" or opts.what
   opts.what = not is_commit and opts.what == "file" and not fields.file and "branch" or opts.what
   opts.what = not is_commit and opts.what == "branch" and not fields.branch and "repo" or opts.what
-
+  opts.what = is_pr and "pull" or opts.what and not fields.pull and "file" or opts.what
   local remotes = {} ---@type {name:string, url:string}[]
 
   for _, line in ipairs(system({ "git", "-C", cwd, "remote", "-v" }, "Failed to get git remotes")) do
