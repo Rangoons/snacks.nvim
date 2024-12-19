@@ -11,7 +11,6 @@ M.meta = {
 }
 
 local uv = vim.uv or vim.loop
-vim.notify("this is working")
 ---@class snacks.gitbrowse.Config
 ---@field url_patterns? table<string, table<string, string|fun(fields:snacks.gitbrowse.Fields):string>>
 local defaults = {
